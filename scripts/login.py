@@ -20,11 +20,17 @@ COOKIE_FILE = pathlib.Path(os.environ.get("BILI_COOKIE_FILE")
                            or (pathlib.Path.home() / ".config/bili-note/cookies.json"))
 DEFAULT_SESSION = os.environ.get("BILI_BROWSER_SESSION", "bili-dff29cd85209")
 
+# agent-browser 的实例会记住「启动时的代理」，一旦后续连接带不同代理就会重启浏览器，
+# 内存里的 cookie 随之清空——这才是"每个会话都要重新登录"的真凶。
+# 所以这里统一剥掉代理变量：B 站直连即可，实例就不会被反复重启。
+_PROXY_KEYS = {"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"}
+AB_ENV = {k: v for k, v in os.environ.items() if k.lower() not in _PROXY_KEYS}
+
 
 # ── agent-browser 调用 ───────────────────────────────────────────────────
 def ab(session, *args, json_out=False, timeout=120):
     cmd = ["agent-browser", "--session", session, *args]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=AB_ENV)
     out = r.stdout.strip()
     if json_out:
         try:
@@ -92,7 +98,7 @@ def cmd_load(session):
         if c.get("expires", -1) and c["expires"] > 0:
             args += ["--expires", str(int(c["expires"]))]
         r = subprocess.run(["agent-browser", "--session", session, *args],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, env=AB_ENV)
         ok += 0 if r.returncode else 1
     st = is_login(session)
     print(f"导入 {ok}/{len(cs)} 条 -> isLogin={st['ok']}"
@@ -124,9 +130,26 @@ def cmd_login(session, wait_s):
     return 4
 
 
+def cmd_keepalive(session):
+    """load → 访问 B 站（刷新 bili_ticket 等短周期 cookie）→ 再存回文件"""
+    if not COOKIE_FILE.exists():
+        print("没有 cookie 文件，先 login")
+        return 1
+    rc = cmd_load(session)
+    if rc != 0:
+        return rc
+    time.sleep(3)
+    st = is_login(session)
+    if not st["ok"]:
+        print("刷新后仍不是登录态，cookie 可能已失效")
+        return 3
+    print(f"✓ 保活完成：{st['name']}")
+    return cmd_save(session)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["login", "save", "load", "status"])
+    ap.add_argument("cmd", choices=["login", "save", "load", "status", "keepalive"])
     ap.add_argument("--session", default=DEFAULT_SESSION)
     ap.add_argument("--wait", type=int, default=300)
     a = ap.parse_args()
@@ -136,6 +159,8 @@ def main():
         return cmd_save(a.session)
     if a.cmd == "load":
         return cmd_load(a.session)
+    if a.cmd == "keepalive":
+        return cmd_keepalive(a.session)
     return cmd_status(a.session)
 
 

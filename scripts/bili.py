@@ -23,9 +23,13 @@ MIXIN_CACHE = pathlib.Path("/tmp/bili_mixin.txt")
 
 
 # ── 浏览器执行 ────────────────────────────────────────────────────────────
+_PROXY_KEYS = {"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"}
+AB_ENV = {k: v for k, v in os.environ.items() if k.lower() not in _PROXY_KEYS}
+
+
 def ab_eval(js, session=SESSION):
     out = subprocess.run(["agent-browser", "--session", session, "eval", js],
-                         capture_output=True, text=True, timeout=120).stdout.strip()
+                         capture_output=True, text=True, timeout=120, env=AB_ENV).stdout.strip()
     try:
         return json.loads(out)          # 去掉外层引号
     except Exception:
@@ -48,7 +52,7 @@ def ensure_bili_page(session=SESSION):
     url = ab_eval("location.href", session)
     if not isinstance(url, str) or "bilibili.com" not in url:
         subprocess.run(["agent-browser", "--session", session, "open",
-                        "https://www.bilibili.com/"], capture_output=True)
+                        "https://www.bilibili.com/"], capture_output=True, env=AB_ENV)
 
 
 # ── WBI 签名 ──────────────────────────────────────────────────────────────
