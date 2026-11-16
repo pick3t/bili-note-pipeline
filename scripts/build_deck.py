@@ -8,6 +8,8 @@
   封面      ← H1 + 来源/字幕/性质
   一句话    ← statement
   纯要点段  ← list（超过 6 条自动拆两页）
+  段落+要点 ← list，段落作左栏导语（>120 字则先出「引子」页）
+  段落+表格 ← table，段落作表格导语
   多段落    ← dense（双栏）
   三列表格  ← compare（左/右面板）
   结尾      ← end
@@ -88,14 +90,21 @@ def statement(sec, body, page):
       </section>"""
 
 
-def list_slide(sec, items, page, kicker=None):
+def title_cls(sec):
+    """标题较长时收一号字，避免在左栏折成两行"""
+    return " long" if len(sec) > 8 else ""
+
+
+def list_slide(sec, items, page, kicker=None, lead=None):
     lis = "".join(f"<li>{esc(x)}</li>" for x in items)
+    lead_html = f'<p class="list-lead" data-anim="fade-up" data-delay="2">{esc(lead)}</p>' if lead else ""
     return f"""
       <section class="slide slide--list light">{sidebar(short(sec, 8))}{chrome(sec, page)}
         <div class="slide-body">
           <div class="list-head">
             <p class="kicker" data-anim="fade-in" data-delay="1">{esc(kicker or "要点")}</p>
-            <h2 class="h2" data-anim="fade-up" data-delay="2">{esc(sec)}</h2>
+            <h2 class="h2{title_cls(sec)}" data-anim="fade-up" data-delay="2">{esc(sec)}</h2>
+            {lead_html}
           </div>
           <ul class="bullet-list" data-anim="fade-up" data-delay="3">{lis}</ul>
         </div>{foot(page)}
@@ -118,7 +127,7 @@ def dense(sec, paras, page):
       </section>"""
 
 
-def table_slide(sec, rows, page):
+def table_slide(sec, rows, page, lead=None):
     """表格 → 细线表格页（设计系统里表格是无圆角 + 1px 细线）"""
     head, body = rows[0], rows[1:7]
     th = "".join(f"<th>{esc(c)}</th>" for c in head)
@@ -126,9 +135,11 @@ def table_slide(sec, rows, page):
     for r in body:
         tds = "".join(f"<td>{esc(short(c, 30))}</td>" for c in r)
         trs.append(f"<tr>{tds}</tr>")
+    lead_html = f'<p class="tbl-lead" data-anim="fade-up" data-delay="1">{esc(lead)}</p>' if lead else ""
     return f"""
       <section class="slide slide--dense light">{sidebar(short(sec, 8))}{chrome(sec, page)}
-        <h2 class="dense-hl" data-anim="fade-up" data-delay="1">{esc(sec)}</h2>
+        <h2 class="dense-hl{title_cls(sec)}" data-anim="fade-up" data-delay="1">{esc(sec)}</h2>
+        {lead_html}
         <div class="slide-body">
           <table class="tbl" data-anim="fade-up" data-delay="2">
             <thead><tr>{th}</tr></thead><tbody>{''.join(trs)}</tbody>
@@ -169,6 +180,12 @@ def build(md, out):
       .tbl tbody tr:last-child td{border-bottom:none}
       .slide--dense.short .slide-body{align-items:center}
       .slide--dense.short .dense-col p{font-size:calc(var(--sz-lead)*.92);color:var(--c-fg)}
+      /* 节内导语段落：同一节既有段落又有要点/表格时，段落不再被丢弃 */
+      .list-lead,.tbl-lead{font-size:calc(var(--sz-body)*.92);line-height:1.75;color:var(--c-fg-2);
+        margin:calc(var(--gap-sm)*.7) 0 0;max-width:100%}
+      .tbl-lead{margin:0 0 var(--gap-sm);max-width:72%}
+      /* 长标题收一号字，避免左栏折成两行 */
+      .h2.long,.dense-hl.long{font-size:calc(var(--sz-h2)*.82)}
     </style></head>""")
     script = theme[theme.rindex("<script>"): theme.rindex("</script>") + 9]
 
@@ -200,7 +217,11 @@ def build(md, out):
         title = txt
 
         if tb:
-            slides.append(table_slide(title, tb[0], f"{page:02d}"))
+            lead = " ".join(ps) if ps and sum(len(p) for p in ps) <= 120 else None
+            if ps and lead is None:                      # 导语太长 → 单独一页，不丢内容
+                slides.append(dense(title + "：引子", ps, f"{page:02d}"))
+                page += 1
+            slides.append(table_slide(title, tb[0], f"{page:02d}", lead=lead))
         elif bullets and (sum(len(b) for b in bullets) / len(bullets) > 30):
             # 要点太长 → 双栏段落，避免挤成竖排
             paras = [f"· {b}" for b in bullets]
@@ -215,7 +236,11 @@ def build(md, out):
                 page += 1
             continue
         elif bullets:
-            slides.append(list_slide(title, bullets, f"{page:02d}"))
+            lead = " ".join(ps) if ps and sum(len(p) for p in ps) <= 120 else None
+            if ps and lead is None:                      # 导语太长 → 单独一页，不丢内容
+                slides.append(dense(title + "：引子", ps, f"{page:02d}"))
+                page += 1
+            slides.append(list_slide(title, bullets, f"{page:02d}", lead=lead))
         elif len(ps) >= 2:
             slides.append(dense(title, ps, f"{page:02d}"))
         elif ps:
