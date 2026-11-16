@@ -24,6 +24,8 @@ $ROOT/
 
 ## 1. 登录：扫一次，全局复用
 
+**结论先给**：整个流程只需要你扫**一次**码。之后脚本自己处理 cookie 落盘、跨会话导入、12 小时保活。
+
 **先理解一个机制**：agent-browser 的 `--session` 是「一个浏览器实例」，cookie 只活在这个实例里。
 实例一重启（换代理、空闲回收、机器重启），登录态就没了——这就是「每个会话都要重新扫码」的原因。
 而反复扫码本身才是风控的高风险动作。
@@ -98,6 +100,9 @@ python3 scripts/bili.py subtitle <bvid> -o $ROOT/<bvid>/source.md
 ```
 
 产出 `source.md`：标题、链接、UP、发布日期、时长、字幕段数 + `[mm:ss.xx] 文本` 逐段底本。
+
+取字幕前脚本会自己检查登录态，**未登录会自动调 `login.py load` 恢复一次**（输出里能看到 `⚠ 未登录，尝试从 cookie 文件恢复…`）；
+只有 cookie 文件也不存在时才需要人工扫码。
 **这份底本是后续总结的唯一事实来源**，不要凭记忆写。
 
 ## 4. 单集：写 note.md（唯一需要人工判断的一步）
@@ -280,3 +285,6 @@ python3 scripts/claim.py break BV1xxx --confirm   # 手动抢占（对方卡死�
 | `正被 sess-x 占用` | 别人在做这一集。换一集，或等 `ttl` 到期；对方确认卡死再 `break --confirm` |
 | 进度表写进去反而是旧数据 | 用 `sync_progress.py`（有防倒退检查），别直接 `create_doc --confirm-overwrite` |
 | 租约文件残留 | `.claims/*.claim` 超过 `ttl` 会自动失效，不影响接手；也可 `release` 清掉 |
+| `cookies get` 返回 0 条、每个会话都要重登 | 浏览器被重启了。八成是手动带了 `HTTP(S)_PROXY` 去调 agent-browser；用 skill 脚本（已自动剥代理），再 `login.py load` |
+| 日志出现 `relaunched browser` | 同上：代理配置变了。别混用不同代理的进程操作同一个 session |
+| 二维码扫了但 `login.py` 超时 | 页面已跳转但脚本还在等 `nav`，直接 `login.py status`；成功就 `login.py save` |
