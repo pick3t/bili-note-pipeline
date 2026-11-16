@@ -47,6 +47,41 @@ python3 scripts/login.py status           # 只看状态，不写
 
 若确实需要共用一个 session，务必保证同一时刻只有一个会话在操作，且别并行执行 `open→eval` 序列。
 
+### 为什么 cookie 老是丢（真凶）
+
+agent-browser 会记住**启动时用的代理**。后续连接若带着不同的代理（每个进程的本地代理端口都不一样），
+它就会**重启浏览器**，内存里的 cookie 全部清空——这才是"每个会话都要重新扫码"的根源，不是 B 站踢人。
+
+所以 `login.py` / `bili.py` 调 agent-browser 时**统一剥掉 `HTTP(S)_PROXY`**（B 站直连即可）。
+只要走这两个脚本，实例就不再被反复重启。**别手动 export 代理去跑 bili 命令。**
+
+### 从正在跑的会话里复用 cookie
+
+任何一个已登录的会话都能当"源"：
+
+```bash
+python3 scripts/login.py save --session <已登录的会话名>   # 导出到 cookie 文件
+python3 scripts/login.py load  --session <新会话名>        # 新会话导入
+```
+
+查某个会话是否已登录（用新标签探，不打扰它正在做的页面）：
+
+```bash
+agent-browser --session <名字> tab new "https://www.bilibili.com/"
+agent-browser --session <名字> eval "fetch('https://api.bilibili.com/x/web-interface/nav').then(r=>r.json()).then(d=>d.data.isLogin)"
+```
+
+### 保活
+
+`bili_ticket` 这类 cookie 只有几天寿命，定期带 cookie 访问一次 B 站会自动续：
+
+```bash
+python3 scripts/login.py keepalive     # load → 访问 B 站 → 再保存
+```
+
+建议每 12 小时跑一次，登录态就不会过期，也不用再扫码。
+
+
 ## 2. 拉清单
 
 ```bash
