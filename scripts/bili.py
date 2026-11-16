@@ -145,7 +145,26 @@ def cmd_meta(bvid):
 
 
 # ── 字幕 ──────────────────────────────────────────────────────────────────
+def ensure_login(session=SESSION):
+    """取字幕前确保登录；未登录就尝试从 cookie 文件恢复一次"""
+    js = ("fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include'})"
+          ".then(r=>r.json()).then(d=>JSON.stringify({ok:!!(d.data&&d.data.isLogin)}))")
+    out = ab_eval(js, session)
+    try:
+        ok = bool(json.loads(out).get("ok"))
+    except Exception:
+        ok = False
+    if ok:
+        return True
+    print("  ⚠ 未登录，尝试从 cookie 文件恢复…")
+    r = subprocess.run([sys.executable, str(pathlib.Path(__file__).parent / "login.py"),
+                        "load", "--session", session], capture_output=True, text=True)
+    print("  " + (r.stdout.strip().splitlines() or ["恢复失败"])[-1])
+    return r.returncode == 0
+
+
 def cmd_subtitle(bvid, out):
+    ensure_login()
     m = cmd_meta(bvid)
     if not m:
         return
