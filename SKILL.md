@@ -22,21 +22,30 @@ $ROOT/
     deck.html            HTML 幻灯片（脚本生成）
 ```
 
-## 1. 一次性准备：登录
+## 1. 登录：扫一次，全局复用
 
-官方 AI 字幕**必须登录**才取得到（不登录返回空 subtitles）。流程：
+**先理解一个机制**：agent-browser 的 `--session` 是「一个浏览器实例」，cookie 只活在这个实例里。
+实例一重启（换代理、空闲回收、机器重启），登录态就没了——这就是「每个会话都要重新扫码」的原因。
+而反复扫码本身才是风控的高风险动作。
+
+所以正确做法不是每个会话都登录，而是**登录一次、把 cookie 落盘、其余会话导入**：
 
 ```bash
-S=bili-$$; agent-browser session id --scope worktree --prefix bili   # 固定会话名，记下来复用
-agent-browser --session $S open "https://passport.bilibili.com/login"
-agent-browser --session $S screenshot /tmp/qr.png                    # 把二维码截图发给用户扫
-agent-browser --session $S eval "fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include'}).then(r=>r.json()).then(d=>d.data.isLogin)"
+# ① 只在第一个会话里做：开登录页 → 截图二维码 → 等你扫 → 自动保存
+python3 scripts/login.py login            # 默认等 300 秒
+#    二维码截图会打印在 /tmp/bili-login-qr.png，记得发给用户（他看不到浏览器窗口）
+
+# ② 之后任何新会话（哪怕换了 session 名）：
+python3 scripts/login.py load             # 从本地 cookie 文件导入并验证
+python3 scripts/login.py status           # 只看状态，不写
 ```
 
-要点：
-- 用户看不到浏览器窗口，**必须截图**（`screenshot`）再 `present_files` 给他扫。
-- 登录成功后 cookie 会跟着会话走；浏览器闲置重启后可能失效，脚本报「无官方字幕」时先重新确认登录。
-- 拿不到登录时只能退回「下载视频 + 每 0.5s 截字幕区 + OCR」，慢 10 倍且错字多，非必要不用。
+- cookie 文件：`~/.config/bili-note/cookies.json`（0600，本机私密；`BILI_COOKIE_FILE` 可改路径）
+- `load` 会顺手查一次 `nav` 接口，输出 `isLogin=true 用户=xxx` 才算成功；返回 3 表示 cookie 已失效，需重新 `login`
+- **不建议多个会话共用同一个 session 名**：虽然 cookie 通用，但一个浏览器只有一个当前页面，
+  两个会话同时 `open` 会互相跳页，抓字幕会拿错页。**共享登录、各自 session，才是稳的**。
+
+若确实需要共用一个 session，务必保证同一时刻只有一个会话在操作，且别并行执行 `open→eval` 序列。
 
 ## 2. 拉清单
 
