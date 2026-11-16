@@ -678,10 +678,13 @@
         flex-direction: column;
         gap: var(--gap-md);
       }
+      /* li 用常规块流 + 绝对定位破折号。
+         不要用 grid：li 里的 <b>/<i>/<code> 会变成匿名 grid item，
+         被挤进窄列后一字一行竖排，并把后续要点顶出页脚。 */
       .bullet-list li {
-        display: grid;
-        grid-template-columns: 1.2em 1fr;
-        gap: 0.5em;
+        display: block;
+        position: relative;
+        padding-left: 1.7em;
         font-family: var(--f-body);
         font-size: var(--sz-lead);
         font-weight: 300;
@@ -690,6 +693,10 @@
       /* Ivory Ledger bullet: em dash in muted tan — never a heavy accent dot */
       .bullet-list li::before {
         content: "—";
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1.2em;
         color: var(--c-fg-light-3);
         font-family: var(--f-mono);
       }

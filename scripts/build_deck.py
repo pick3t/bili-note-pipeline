@@ -152,10 +152,10 @@ def build(md, out):
     theme = THEME.read_text(encoding="utf-8")
     head = theme.split("<body>")[0]
     head = head.replace("</head>", """<style>
-      /* 修竖排：列表列宽下限 + 正常断词 */
+      /* 列表列宽下限 + 正常断词（li 本体用块流，见 deck_theme.html） */
       .slide--list .slide-body{grid-template-columns:minmax(0,2fr) minmax(0,3fr)}
       .bullet-list{min-width:0}
-      .bullet-list li{grid-template-columns:1.4em minmax(0,1fr);word-break:normal;overflow-wrap:anywhere}
+      .bullet-list li{word-break:normal;overflow-wrap:anywhere}
       .compare-row{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--pad-x)*0.55);
         border-top:1px solid var(--c-border);padding-top:var(--gap-md)}
       .compare-row .compare-panel{border:none;padding:0}
