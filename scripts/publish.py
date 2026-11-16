@@ -8,7 +8,7 @@ HTML 无法由脚本上传（需要宿主工具），本脚本最后会把两个
   python3 publish.py --bv BV1xxx --dir $ROOT/BV1xxx \
       --space-id <spaceId> --parent-id <专题文件夹id> [--dry-run]
 """
-import argparse, json, pathlib, re, subprocess, sys
+import argparse, json, os, pathlib, re, subprocess, sys
 
 LIB = ("/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/"
        "resources/plugins/workbuddy-builtin/skills/library")
@@ -39,6 +39,20 @@ def main():
     a = ap.parse_args()
 
     d = pathlib.Path(a.dir)
+
+    # 租约检查：别人正在做这一集就别归档，避免同名文件夹打架
+    cf = d.parent / ".claims" / f"{a.bv}.claim"
+    if cf.exists():
+        try:
+            cur = json.loads(cf.read_text(encoding="utf-8")).get("session")
+        except Exception:
+            cur = "?"
+        me = os.environ.get("BILI_SESSION")
+        if me and cur and cur != me:
+            sys.exit(f"{a.bv} 的租约在 {cur} 手上，先确认归属再归档")
+        if not me:
+            print(f"提示：{a.bv} 有租约（{cur}），你未设置 BILI_SESSION，按无主处理")
+
     note = d / "note.md"
     if not note.exists():
         sys.exit("缺 note.md，先生成总结")

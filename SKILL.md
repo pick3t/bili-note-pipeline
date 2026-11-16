@@ -184,9 +184,36 @@ python3 scripts/sync_progress.py $ROOT \
 - **没有占用标记**：没人能"锁定第 30 集"。真要做，得在同一集文件夹里放一个 `DOING` 文件当租约；目前只靠区间分配。
 - 别在项目目录里用 `.` 跑脚本（已在 `progress.py` 里加了根目录校验，会直接报错）。
 
-## 8. 批量推进节奏
+## 8. 并发与租约（多会话抢同一集怎么办）
 
-- 一批 **5 集**：抓底本 → 写 md → 生成两个 html → 抽查 3 页 → 上传 → 更新进度表。
+进度表只解决「做完没有」，不解决「正在做」。多人/多会话并行时用文件租约：
+
+```bash
+export BILI_SESSION=sess-a          # 每个会话一个标识，必须设
+python3 scripts/claim.py claim BV1xxx [--ttl 90]
+python3 scripts/claim.py list       # 看谁在做什么
+python3 scripts/claim.py release BV1xxx
+python3 scripts/claim.py break BV1xxx --confirm   # 手动抢占（对方卡死时）
+```
+
+**状态机**：无主 →（claim）→ 持有中 →（release）→ 无主
+　　　　　　　　　　　　　└（超 ttl 未续约）→ 视为废弃，别人可接手
+　　　　　　　　　　　　　└（break --confirm）→ 强制易主
+
+**要点**
+
+- 租约是 `<项目根>/.claims/<bvid>.claim`，靠 `O_CREAT|O_EXCL` 原子创建，天然互斥；8 个进程同时抢，只有一个能成功。
+- **文件 mtime 就是心跳**，同会话重复 `claim` 即续约；`ttl` 默认 90 分钟（可用 `--ttl` 按集长调整）。
+- 已完成（`note.md`+`note.html`+`deck.html` 都在）默认拒占，要重做加 `--allow-done`。
+- 所有动作写进 `.claims/.log`，事后可追责。
+- `publish.py` 会检查租约：这一集若在别人手上，直接拒绝归档。
+
+**推荐节奏**：`claim → 抓底本 → 写 note → build → publish → release → sync_progress`
+`claim` 放在最前，`release` 放在归档之后——这样整个流程内别人抢不走。
+
+## 9. 批量推进节奏
+
+- 一批 **5 集**，每集走：`claim` → 抓底本 → 写 md → 生成两个 html → 抽查 3 页 → 上传 → `release`；整批结束再 `sync_progress`。
 - 每批结束给用户：本批清单 + 链接 + 剩余数量，别一次性铺开 20 集（质量会掉）。
 - 遇到长视频（>30 分钟）或内容跨越多主题，拆成两篇 note.md，第二篇命名 `<bvid>-2`。
 
@@ -199,3 +226,6 @@ python3 scripts/sync_progress.py $ROOT \
 | 幻灯片文字竖排 | 要点过长被塞进 list 版式。检查该条是否 >45 字，或确认 `build_deck.py` 的长要点分支生效 |
 | 中文一行只放得下几个字 | 模板按 1920 设计，`clamp()` 已设最小字号；预览面板窄会缩小，按 F11 全屏看真实效果 |
 | 上传后文档样式丢失 | 文档只吃 Markdown，表格用 GFM，别塞 HTML 标签 |
+| `正被 sess-x 占用` | 别人在做这一集。换一集，或等 `ttl` 到期；对方确认卡死再 `break --confirm` |
+| 进度表写进去反而是旧数据 | 用 `sync_progress.py`（有防倒退检查），别直接 `create_doc --confirm-overwrite` |
+| 租约文件残留 | `.claims/*.claim` 超过 `ttl` 会自动失效，不影响接手；也可 `release` 清掉 |
