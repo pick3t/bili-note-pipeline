@@ -42,7 +42,11 @@ python3 scripts/login.py load             # 从本地 cookie 文件导入并验�
 python3 scripts/login.py status           # 只看状态，不写
 ```
 
-- cookie 文件：`~/.config/bili-note/cookies.json`（0600，本机私密；`BILI_COOKIE_FILE` 可改路径）
+- **cookie 存在哪**：`~/.config/bili-note/cookies.json`（绝对路径 `/Users/<你>/.config/bili-note/cookies.json`），
+  权限 `0600`，内容是一组 `{name,value,domain,path,expires,httpOnly,secure}`。
+  刻意放在仓库和工作区之外，不会被 git/上传带走。可用 `BILI_COOKIE_FILE` 改路径。
+- **它等于账号临时凭证**（含 `SESSDATA`）：不要提交、不要发人、不要同步到云端盘；换账号就删掉这个文件。
+- `save` 有防倒退：如果这次抓到的是匿名 cookie（没有 `SESSDATA`），而文件里已有登录态，**会拒绝覆盖**（加 `--force` 才强行写）。
 - `load` 会顺手查一次 `nav` 接口，输出 `isLogin=true 用户=xxx` 才算成功；返回 3 表示 cookie 已失效，需重新 `login`
 - **不建议多个会话共用同一个 session 名**：虽然 cookie 通用，但一个浏览器只有一个当前页面，
   两个会话同时 `open` 会互相跳页，抓字幕会拿错页。**共享登录、各自 session，才是稳的**。

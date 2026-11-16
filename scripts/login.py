@@ -25,6 +25,9 @@ DEFAULT_SESSION = os.environ.get("BILI_BROWSER_SESSION", "bili-dff29cd85209")
 # 所以这里统一剥掉代理变量：B 站直连即可，实例就不会被反复重启。
 _PROXY_KEYS = {"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"}
 AB_ENV = {k: v for k, v in os.environ.items() if k.lower() not in _PROXY_KEYS}
+# 但只剥环境变量不够：macOS 系统代理（Clash 等 127.0.0.1:7897）Chrome 照样会走，
+# 代理挂掉时页面直接 ERR_PROXY_CONNECTION_FAILED。所以显式让浏览器忽略系统代理。
+AB_ENV.setdefault("AGENT_BROWSER_ARGS", "--proxy-server=direct:// --proxy-bypass-list=*")
 
 
 # ── agent-browser 调用 ───────────────────────────────────────────────────
@@ -64,16 +67,27 @@ def is_login(session):
 
 
 # ── 命令 ─────────────────────────────────────────────────────────────────
-def cmd_save(session):
+def cmd_save(session, force=False):
     cs = get_cookies(session)
     if not cs:
         print("当前会话没有 cookie（可能未登录或浏览器刚重启）；先跑 login")
         return 1
+
+    names = [c["name"] for c in cs]
+    # 防倒退：别用一个「没有登录态」的集合盖掉已有 SESSDATA 的文件
+    if "SESSDATA" not in names and COOKIE_FILE.exists() and not force:
+        try:
+            old = [c["name"] for c in json.loads(COOKIE_FILE.read_text(encoding="utf-8"))]
+        except Exception:
+            old = []
+        if "SESSDATA" in old:
+            print("✗ 本次抓到的 cookie 不含 SESSDATA（未登录），"
+                  "而文件里已有登录态，已拒绝覆盖。确需覆盖加 --force")
+            return 2
     COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
     COOKIE_FILE.write_text(json.dumps(cs, ensure_ascii=False, indent=1), encoding="utf-8")
     os.chmod(COOKIE_FILE, 0o600)
-    have = [c["name"] for c in cs]
-    key = "SESSDATA" in have
+    key = "SESSDATA" in names
     print(f"✓ 已保存 {len(cs)} 条 cookie -> {COOKIE_FILE}"
           f"（含登录态 SESSDATA: {'是' if key else '否'}）")
     return 0 if key else 2
@@ -152,11 +166,12 @@ def main():
     ap.add_argument("cmd", choices=["login", "save", "load", "status", "keepalive"])
     ap.add_argument("--session", default=DEFAULT_SESSION)
     ap.add_argument("--wait", type=int, default=300)
+    ap.add_argument("--force", action="store_true")
     a = ap.parse_args()
     if a.cmd == "login":
         return cmd_login(a.session, a.wait)
     if a.cmd == "save":
-        return cmd_save(a.session)
+        return cmd_save(a.session, force=a.force)
     if a.cmd == "load":
         return cmd_load(a.session)
     if a.cmd == "keepalive":
