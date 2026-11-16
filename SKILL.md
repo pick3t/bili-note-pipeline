@@ -292,5 +292,6 @@ python3 scripts/claim.py break BV1xxx --confirm   # 手动抢占（对方卡死�
 | `cookies get` 返回 0 条、每个会话都要重登 | 浏览器被重启了。八成是手动带了 `HTTP(S)_PROXY` 去调 agent-browser；用 skill 脚本（已自动剥代理），再 `login.py load` |
 | 日志出现 `relaunched browser` | 同上：代理配置变了。别混用不同代理的进程操作同一个 session |
 | 二维码扫了但 `login.py` 一直不结束 | 老版本 bug（已修）：等待循环里用 `is_login()` 轮询，而它会 `open bilibili.com`，等于每 5 秒把登录页刷走一次，扫码确认永远回不来。现在等待期只读 cookie 里的 `SESSDATA`，不导航。若仍在旧版本上遇到：别中断，先 `login.py status`，成功就 `login.py save` |
+| `load` / `keepalive` 报「cookie 可能已过期」，但 `status` 是 True | 老版本 bug（已修）：`eval` 的返回是套了一层引号的 JSON 字符串，`json.loads` 只解一次得到 `str`，`is_login()` 于是永远判未登录。现在解两次，并对刚导入的 cookie 做 2s×3 重试 |
 | 登录页显示 `ERR_PROXY_CONNECTION_FAILED` | 系统代理（Clash 之类 127.0.0.1:7897）挂了，但 Chrome 仍走系统代理。脚本只剥环境变量，管不到系统代理——关掉系统代理或让它放行 `bilibili.com` 直连，再重跑 `login.py login` |
 | `Auto-launch failed: CDP response channel closed` | 给 agent-browser 传了 `--proxy-server=direct://` 这类启动参数，反而起不来。别传启动参数，靠脚本剥环境变量即可 |

@@ -47,25 +47,34 @@ def get_cookies(session):
     return (d.get("data") or {}).get("cookies") or []
 
 
-def is_login(session):
+def is_login(session, retries=3):
     """返回 {'ok': bool, 'name': str}；任何异常都当未登录
 
-    注意：这个函数会 open bilibili.com（会导航当前标签页），
+    注意 1：这个函数会 open bilibili.com（会导航当前标签页），
     所以「等扫码」的循环里不能用它轮询——那会把登录页刷掉。
     等扫码用 has_sessdata()。
+
+    注意 2：`cookies set` 之后立刻访问，nav 常常还返回未登录
+    （cookie 尚未落进浏览器 profile），所以默认重试 3 次。
     """
-    try:
-        ab(session, "open", "https://www.bilibili.com/")
-        js = ("fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include'})"
-              ".then(r=>r.json()).then(d=>JSON.stringify({ok:!!(d.data&&d.data.isLogin),"
-              "name:(d.data&&d.data.uname)||''}))")
-        out = ab(session, "eval", js)
-        d = json.loads(out)
-        if not isinstance(d, dict):
-            return {"ok": False, "name": ""}
-        return {"ok": bool(d.get("ok")), "name": d.get("name") or ""}
-    except Exception:
-        return {"ok": False, "name": ""}
+    js = ("fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include'})"
+          ".then(r=>r.json()).then(d=>JSON.stringify({ok:!!(d.data&&d.data.isLogin),"
+          "name:(d.data&&d.data.uname)||''}))")
+    for i in range(max(1, retries)):
+        try:
+            ab(session, "open", "https://www.bilibili.com/")
+            # eval 把 JS 返回的字符串再 JSON 编码一层，出来是 "{\"ok\":true,...}"，
+            # 所以可能要解两次才是 dict（踩过：只解一次永远判未登录）。
+            d = json.loads(ab(session, "eval", js))
+            if isinstance(d, str):
+                d = json.loads(d)
+            if isinstance(d, dict) and d.get("ok"):
+                return {"ok": True, "name": d.get("name") or ""}
+        except Exception:
+            pass
+        if i + 1 < retries:
+            time.sleep(2)
+    return {"ok": False, "name": ""}
 
 
 # ── 命令 ─────────────────────────────────────────────────────────────────
