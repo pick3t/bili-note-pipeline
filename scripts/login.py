@@ -25,9 +25,6 @@ DEFAULT_SESSION = os.environ.get("BILI_BROWSER_SESSION", "bili-dff29cd85209")
 # 所以这里统一剥掉代理变量：B 站直连即可，实例就不会被反复重启。
 _PROXY_KEYS = {"http_proxy", "https_proxy", "all_proxy", "ftp_proxy"}
 AB_ENV = {k: v for k, v in os.environ.items() if k.lower() not in _PROXY_KEYS}
-# 但只剥环境变量不够：macOS 系统代理（Clash 等 127.0.0.1:7897）Chrome 照样会走，
-# 代理挂掉时页面直接 ERR_PROXY_CONNECTION_FAILED。所以显式让浏览器忽略系统代理。
-AB_ENV.setdefault("AGENT_BROWSER_ARGS", "--proxy-server=direct:// --proxy-bypass-list=*")
 
 
 # ── agent-browser 调用 ───────────────────────────────────────────────────
@@ -51,7 +48,12 @@ def get_cookies(session):
 
 
 def is_login(session):
-    """返回 {'ok': bool, 'name': str}；任何异常都当未登录"""
+    """返回 {'ok': bool, 'name': str}；任何异常都当未登录
+
+    注意：这个函数会 open bilibili.com（会导航当前标签页），
+    所以「等扫码」的循环里不能用它轮询——那会把登录页刷掉。
+    等扫码用 has_sessdata()。
+    """
     try:
         ab(session, "open", "https://www.bilibili.com/")
         js = ("fetch('https://api.bilibili.com/x/web-interface/nav',{credentials:'include'})"
@@ -67,6 +69,19 @@ def is_login(session):
 
 
 # ── 命令 ─────────────────────────────────────────────────────────────────
+def has_sessdata(session):
+    """只看 cookie 里有没有 SESSDATA，不导航、不动当前页面。
+
+    扫码确认后是「登录页自己去轮询拿 cookie」，页面一旦被导航走就永远拿不到，
+    所以等扫码期间只能读 cookie，不能 open 任何 URL。
+    """
+    try:
+        return any(c.get("name") == "SESSDATA" and c.get("value")
+                   for c in get_cookies(session))
+    except Exception:
+        return False
+
+
 def cmd_save(session, force=False):
     cs = get_cookies(session)
     if not cs:
@@ -129,17 +144,20 @@ def cmd_status(session):
 
 def cmd_login(session, wait_s):
     ab(session, "open", "https://passport.bilibili.com/login")
-    time.sleep(3)
+    time.sleep(5)
     shot = "/tmp/bili-login-qr.png"
     ab(session, "screenshot", shot)
     print(f"二维码截图：{shot}\n请用 B 站 App 扫码（最多等 {wait_s}s）…")
     t0 = time.time()
     while time.time() - t0 < wait_s:
-        st = is_login(session)
-        if st["ok"]:
-            print(f"✓ 登录成功：{st['name']}（用时 {int(time.time()-t0)}s）")
-            return cmd_save(session)
-        time.sleep(5)
+        # 只读 cookie 判断，绝不能在登录页上调 is_login（会把页面刷走）
+        if has_sessdata(session):
+            time.sleep(2)
+            st = is_login(session)  # 已拿到 SESSDATA，这时再导航验证 + 落盘
+            if st["ok"]:
+                print(f"✓ 登录成功：{st['name']}（用时 {int(time.time()-t0)}s）")
+                return cmd_save(session)
+        time.sleep(3)
     print("✗ 等待超时，未检测到登录")
     return 4
 
