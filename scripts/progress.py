@@ -21,7 +21,12 @@ def main():
     ap.add_argument("--out", default="进度.md")
     a = ap.parse_args()
 
-    root = pathlib.Path(a.root)
+    root = pathlib.Path(a.root).expanduser().resolve()
+    if not root.is_dir():
+        raise SystemExit(f"目录不存在: {root}")
+    if not (root / "videos.json").exists() and not any(root.glob("BV*/note.md")):
+        raise SystemExit(f"{root} 看起来不是项目根目录（找不到 videos.json 或 BV*/note.md）")
+    title = root.name or "扒片进度"
     videos = []
     vj = pathlib.Path(a.videos) if a.videos else root / "videos.json"
     if vj.exists():
@@ -56,7 +61,7 @@ def main():
 
     total = len(videos)
     head = [
-        f"# {root.name} · 扒片进度",
+        f"# {title} · 扒片进度",
         "",
         f"共 {total} 集｜字幕底本 {done['src']}/{total}｜"
         f"md 总结 {done['md']}/{total}｜html {done['html']}/{total}｜slide {done['deck']}/{total}",
