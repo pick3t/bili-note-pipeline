@@ -118,23 +118,27 @@ agent-browser --session $S screenshot /tmp/p3.png   # 然后 ViewImage 看有没
 **结构固定**，不要散放：
 
 ```
-<专题文件夹>/                      ← 专题文件夹（parent id 见下）
-  扒片进度             ← 进度表文档（唯一共享状态，所有会话都读它）
-  聊聊大运和流年的关系，“好大运”和“坏大运”/   ← 一集一个文件夹，用视频标题命名
-      大运与流年：谁更重…           ← note.md（文档）
-      大运与流年-笔记页              ← note.html（页面）
-      大运与流年-幻灯片              ← deck.html（页面）
+<专题文件夹>/                      ← 专题文件夹（parent id 见 config.local.md）
+  扒片进度                         ← 进度表文档（唯一共享状态，所有会话都读它）
+  第 01 集标题/                    ← 一集一个文件夹，用视频标题命名
+      笔记标题                     ← note.md（文档）
+      字幕底本                     ← source.md（文档，带时间轴的全文字幕）
+      笔记标题-笔记页               ← note.html（页面）
+      笔记标题-幻灯片               ← deck.html（页面）
 ```
 
 - 文件夹名 = 视频标题（`/` 换 `／`、`:` 换 `：`，避免路径问题）
-- 首次先运行归档脚本，它负责「找/建文件夹 + 传 note.md」并打印两个上传目标：
+- **底本一定要一起传**：只留在本地别人检索不到、换机器就没了。`publish.py` 已内置这一步，且**幂等**（同名文档存在就跳过，可反复运行）。
+- 一条命令完成「建/找文件夹 + 传 note.md + 传 source.md」，并打印两个 html 的上传目标：
 
 ```bash
-python3 scripts/publish.py --bv <bvid> --dir <BV目录>   --space-id <spaceId> --parent-id <专题文件夹id>
+python3 scripts/publish.py --bv <bvid> --dir <BV目录> \
+  --space-id <spaceId> --parent-id <专题文件夹id>
 ```
 
 - 再用 `LibraryUpload` 工具传两个 html（`parent_id` = 该集文件夹 id），命名 `<短标题>-笔记页.html` / `<短标题>-幻灯片.html`。
-- 已有节点要调整位置用 `space.workspace.move-node --node-id X --target-parent-id <folderId>`；返回 `data.status=success` 才算成功，**必须回读子节点列表确认**。
+- 传完回读该集文件夹，确认**四个节点齐全**：总结 doc、字幕底本 doc、笔记页、幻灯片。
+- 已有节点要调整位置用 `space.workspace.move-node --node-id X --target-parent-id <folderId>`；返回 `data.status=success` 才算成功。
 
 ### 固定 id（<专题文件夹>）
 
