@@ -69,13 +69,31 @@ def main():
             sys.exit(f"建文件夹失败: {r[:200]}")
         folder_id = m.group(1)
 
-    # 2) md → 文档
-    r = subprocess.run(["python3", f"{LIB}/doc/create_doc.py", "--title", title,
-                        "--space-id", a.space_id, "--parent-id", folder_id,
-                        "--content-file", str(note)],
-                       capture_output=True, text=True).stdout
-    m = re.search(r"KS_DOC_CREATE\t(\S+)", r)
-    print("doc:", m.group(1) if m else f"失败 {r[:160]}")
+    # 2) 已存在的文档不再重复建
+    existing = set()
+    inner = api("space.workspace.list-nodes", space_id=a.space_id,
+                parent_node_id=folder_id, limit=50)
+    for n in inner.get("data", {}).get("nodes", []):
+        if n["kind"] == "doc":
+            existing.add(n["title"].strip())
+
+    def add_doc(doc_title, path):
+        if doc_title in existing:
+            print(f"skip 已存在: {doc_title}")
+            return
+        r = subprocess.run(["python3", f"{LIB}/doc/create_doc.py", "--title", doc_title,
+                            "--space-id", a.space_id, "--parent-id", folder_id,
+                            "--content-file", str(path)],
+                           capture_output=True, text=True).stdout
+        m = re.search(r"KS_DOC_CREATE\t(\S+)", r)
+        print(f"{doc_title}:", m.group(1) if m else f"失败 {r[:160]}")
+
+    # 2a) 总结
+    add_doc(title, note)
+    # 2b) 字幕底本（放在同一集文件夹里，方便别处引用/检索）
+    src = d / "source.md"
+    if src.exists():
+        add_doc("字幕底本", src)
 
     # 3) 剩下两个文件交给宿主工具
     print("\n下一步（用 LibraryUpload 工具，parent_id 填上面的 folder id）：")
