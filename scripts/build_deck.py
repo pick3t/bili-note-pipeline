@@ -81,11 +81,18 @@ def cover(title, chips, page):
 
 
 def statement(sec, body, page):
+    """「一句话」页的字号按字数挑档。
+
+    死用 h1 的话，超过 40 字的总结会撑出页脚——第 117 集就是这样被裁掉两行的。
+    四档：≤46 字用 h1、≤72 用 h2、≤110 用 h3、再长用 lead-sm。
+    """
+    n = len(re.sub(r"\*\*|\s", "", body))
+    cls = "h1" if n <= 46 else "h2" if n <= 72 else "h3" if n <= 110 else "lead-sm"
     return f"""
       <section class="slide slide--statement light">{sidebar(short(sec, 8))}{chrome(sec, page)}
         <div class="statement-body">
           <p class="kicker" data-anim="fade-in" data-delay="1">{esc(sec)}</p>
-          <h2 class="h1" data-anim="fade-up" data-delay="2" style="max-width:80%">{body}</h2>
+          <h2 class="{cls}" data-anim="fade-up" data-delay="2" style="max-width:86%">{body}</h2>
         </div>{foot(page)}
       </section>"""
 
@@ -109,6 +116,32 @@ def list_slide(sec, items, page, kicker=None, lead=None):
           <ul class="bullet-list" data-anim="fade-up" data-delay="3">{lis}</ul>
         </div>{foot(page)}
       </section>"""
+
+
+def split_balanced(items, limit=240):
+    """按字数把段落/要点切成几页，且让每页字数尽量相等。
+
+    死按 4 段切页有两个坑：一页 408 字会撑出页脚，剩下一段又单独占一页。
+    先按 limit 估页数，再把内容按字数均分。limit 是「一页大概能装多少字」，
+    双栏正文实测 240 字左右合适（再多就要缩字号，缩到底还装不下）。
+    """
+    total = sum(len(x) for x in items)
+    # 两三条、总量不算离谱的，宁可让自动缩排去挤，也别切出一页只有半句话的尾巴
+    if len(items) <= 1 or total <= limit or (len(items) <= 3 and total <= 380):
+        return [items]
+    pages = min(len(items), max(1, -(-total // limit)))
+    target = total / pages
+    out, cur, acc = [], [], 0
+    for i, x in enumerate(items):
+        cur.append(x)
+        acc += len(x)
+        left_items = len(items) - i - 1
+        left_pages = pages - len(out) - 1
+        if acc >= target and left_pages > 0 and left_items >= left_pages:
+            out.append(cur); cur, acc = [], 0
+    if cur:
+        out.append(cur)
+    return out
 
 
 def dense(sec, paras, page):
@@ -251,14 +284,14 @@ def build(md, out):
         elif bullets and (sum(len(b) for b in bullets) / len(bullets) > 30):
             # 要点太长 → 双栏段落，避免挤成竖排
             paras = [f"· {b}" for b in bullets]
-            for k in range(0, len(paras), 4):
-                slides.append(dense(title if k == 0 else title + "（续）", paras[k:k + 4], f"{page:02d}"))
+            for k, grp in enumerate(split_balanced(paras)):
+                slides.append(dense(title if k == 0 else title + "（续）", grp, f"{page:02d}"))
                 page += 1
             continue
         elif bullets and len(bullets) > 6:
-            for k in range(0, len(bullets), 6):
+            for k, grp in enumerate(split_balanced(bullets, limit=300)):
                 slides.append(list_slide(title if k == 0 else title + "（续）",
-                                         bullets[k:k + 6], f"{page:02d}", kicker="要点"))
+                                         grp, f"{page:02d}", kicker="要点"))
                 page += 1
             continue
         elif bullets:
@@ -268,7 +301,11 @@ def build(md, out):
                 page += 1
             slides.append(list_slide(title, bullets, f"{page:02d}", lead=lead))
         elif len(ps) >= 2:
-            slides.append(dense(title, ps, f"{page:02d}"))
+            groups = split_balanced(ps)
+            for k, grp in enumerate(groups):
+                slides.append(dense(title if k == 0 else title + "（续）", grp, f"{page:02d}"))
+                if k < len(groups) - 1:
+                    page += 1
         elif ps:
             slides.append(statement(title, esc(ps[0]), f"{page:02d}"))
             last_line = ps[0]

@@ -171,7 +171,20 @@ python3 scripts/build_deck.py      $ROOT/<bvid>/note.md $ROOT/<bvid>/deck.html
 
 节标题尽量 **≤9 字**：超过 8 字脚本会自动收一号字（`.h2.long`），但再长仍会在左栏折行。
 
-自检（**必做**，至少抽 3 页）：
+自检（**必做**，跑全量脚本，不要抽查）：
+
+```bash
+python3 scripts/check_decks.py $ROOT            # 全部 deck 过一遍，逐页报位置
+python3 scripts/check_decks.py $ROOT --static   # 只查老模板（不启浏览器，秒出）
+```
+
+它查四类问题：`.bullet-list li` 还是 grid（会一个字一行）、正文溢出、
+窄栏（宽度不足三个字却装着整行字）、只剩一句话的「（续）」页。
+**抽查靠不住**：第 5 集第 6 页那种竖排，60 页里就那么一页，肉眼永远漏。
+
+改完版式相关的模板，必须把**全部** deck 重建一遍再跑这个脚本——旧产物不会自己变好。
+
+早期手工抽查的做法（抽 3 页截图）：
 
 ```bash
 agent-browser --session $S open "file://$ROOT/<bvid>/deck.html"

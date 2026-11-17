@@ -61,14 +61,17 @@
         --f-mono: "JetBrains Mono", "Noto Sans SC", "PingFang SC", monospace;
 
         /* ── Type Scale ───────────────────────────────────────────────────── */
-        --sz-display: clamp(52px, 7.6vw, 132px); /* hero/cover — very large, very light         */
-        --sz-h1: clamp(36px, 4.9vw, 88px); /* chapter / statement headline                */
-        --sz-h2: clamp(31px, 3.4vw, 62px); /* slide headline                              */
-        --sz-h3: clamp(21px, 2.15vw, 39px); /* sub-headline                                */
-        --sz-lead: clamp(21px, 1.75vw, 32px); /* generous lead text                          */
-        --sz-body: clamp(18.5px, 1.45vw, 28px); /* body text                                   */
-        --sz-caption: clamp(14px, 1.1vw, 20px); /* captions, footnotes                         */
-        --sz-label: clamp(13.5px, 1.02vw, 18px); /* chrome labels, sidebar labels               */
+        /* --fit 由自动缩排脚本按页设置（1 = 原尺寸）。内容是写死的，长短不一，
+           溢出必须靠缩字号兜底，否则只能靠人眼一页页看——那必然漏。 */
+        --fit: 1;
+        --sz-display: calc(clamp(52px, 7.6vw, 132px) * var(--fit)); /* hero/cover — very large, very light */
+        --sz-h1: calc(clamp(36px, 4.9vw, 88px) * var(--fit)); /* chapter / statement headline       */
+        --sz-h2: calc(clamp(31px, 3.4vw, 62px) * var(--fit)); /* slide headline                     */
+        --sz-h3: calc(clamp(21px, 2.15vw, 39px) * var(--fit)); /* sub-headline                      */
+        --sz-lead: calc(clamp(21px, 1.75vw, 32px) * var(--fit)); /* generous lead text             */
+        --sz-body: calc(clamp(18.5px, 1.45vw, 28px) * var(--fit)); /* body text                     */
+        --sz-caption: calc(clamp(14px, 1.1vw, 20px) * var(--fit)); /* captions, footnotes          */
+        --sz-label: calc(clamp(13.5px, 1.02vw, 18px) * var(--fit)); /* chrome labels, sidebar     */
 
         /* ── Spacing ─────────────────────────────────────────────────────── */
         --pad-x: 8vw; /* generous horizontal padding — space is the design */
@@ -538,6 +541,10 @@
 
       /* ── 3. STATEMENT ─────────────────────────────────────────────────── */
       /* Large claim slide: sidebar + headline + optional supporting content */
+      .statement-body .lead-sm {
+        font-size: calc(clamp(22px, 2.05vw, 36px) * var(--fit));
+        line-height: 1.5; font-weight: 500;
+      }
       .slide--statement .statement-body {
         display: flex;
         flex-direction: column;
@@ -1739,8 +1746,55 @@
           { passive: true },
         );
 
+        /* ── 自动缩排 ────────────────────────────────────────────────────────
+           中文排版溢出是最容易漏的一类：正文盒子是固定的，字数一多就顶出页脚。
+           这里逐页量一次，装不下就按 4% 一档缩字号（--fit），到 0.72 为止；
+           缩到底还装不下，说明这一节该拆，交给 check_decks.py 报出来。 */
+        var FIT_MIN = 0.58,
+          FIT_STEP = 0.04;
+
+        function fitSlide(sl) {
+          var el = sl.querySelector(".slide-body") || sl;
+          sl.style.removeProperty("--fit");
+          var k = 1,
+            guard = 0;
+          while (
+            (el.scrollHeight > el.clientHeight + 2 ||
+              el.scrollWidth > el.clientWidth + 2) &&
+            k > FIT_MIN &&
+            guard++ < 12
+          ) {
+            k = Math.max(FIT_MIN, k - FIT_STEP);
+            sl.style.setProperty("--fit", k);
+          }
+        }
+
+        function fitAll() {
+          document.querySelectorAll(".slide").forEach(function (sl) {
+            if (sl.classList.contains("is-active")) fitSlide(sl);
+          });
+        }
+
+        // 隐藏的页量不出高度，所以每页第一次显示时再量
+        var fitObs = new MutationObserver(function (ms) {
+          ms.forEach(function (m) {
+            if (m.target.classList && m.target.classList.contains("is-active"))
+              fitSlide(m.target);
+          });
+        });
+        document.querySelectorAll(".slide").forEach(function (sl) {
+          fitObs.observe(sl, { attributes: true, attributeFilter: ["class"] });
+        });
+        window.addEventListener("resize", function () {
+          document.querySelectorAll(".slide").forEach(function (sl) {
+            sl.style.removeProperty("--fit");
+          });
+          fitAll();
+        });
+
         /* ── Initialize on slide 1 ───────────────────────────────────────  */
         goTo(0);
+        fitAll();
       })();
     </script>
   </body>
