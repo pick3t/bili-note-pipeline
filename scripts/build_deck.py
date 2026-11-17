@@ -127,9 +127,12 @@ def dense(sec, paras, page):
       </section>"""
 
 
-def table_slide(sec, rows, page, lead=None):
-    """表格 → 细线表格页（设计系统里表格是无圆角 + 1px 细线）"""
-    head, body = rows[0], rows[1:7]
+def table_slide(sec, head, body, page, lead=None):
+    """表格 → 细线表格页（设计系统里表格是无圆角 + 1px 细线）
+
+    body 必须是已切好的分页块；整表行数由 table_chunks() 负责切分，
+    这里不再截断——早期版本用 rows[1:7] 直接把第 7 行起静默丢掉。
+    """
     th = "".join(f"<th>{esc(c)}</th>" for c in head)
     trs = []
     for r in body:
@@ -146,6 +149,16 @@ def table_slide(sec, rows, page, lead=None):
           </table>
         </div>{foot(page)}
       </section>"""
+
+
+def table_chunks(body, cap=6):
+    """按可读性均衡切页：不超过 cap 就是一页；超出则均分，避免续页只剩一两行。"""
+    n = len(body)
+    if n <= cap:
+        return [body]
+    pages = (n + cap - 1) // cap
+    size = (n + pages - 1) // pages
+    return [body[i:i + size] for i in range(0, n, size)]
 
 
 def end_slide(title, page):
@@ -221,7 +234,20 @@ def build(md, out):
             if ps and lead is None:                      # 导语太长 → 单独一页，不丢内容
                 slides.append(dense(title + "：引子", ps, f"{page:02d}"))
                 page += 1
-            slides.append(table_slide(title, tb[0], f"{page:02d}", lead=lead))
+            first = True
+            for t in tb:                                 # 一节多张表也全出，不再只取第一张
+                thead, body = t[0], list(t[1:])           # 别用 head，外层还留着 HTML 的 <head>
+                chunks = table_chunks(body)
+                if len(chunks) > 1:
+                    print(f"    · 表格 {len(body)} 行 → 分 {len(chunks)} 页"
+                          f"（{'+'.join(str(len(c)) for c in chunks)}）", file=sys.stderr)
+                for chunk in chunks:
+                    slides.append(table_slide(
+                        title if first else title + "（续）", thead, chunk, f"{page:02d}",
+                        lead=lead if first else None))
+                    page += 1
+                    first = False
+            continue
         elif bullets and (sum(len(b) for b in bullets) / len(bullets) > 30):
             # 要点太长 → 双栏段落，避免挤成竖排
             paras = [f"· {b}" for b in bullets]
