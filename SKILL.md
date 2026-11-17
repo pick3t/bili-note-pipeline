@@ -231,6 +231,8 @@ python3 scripts/sync_progress.py $ROOT \
 
 表格列：`序号｜BV 号（超链接）｜视频名称｜markdown 总结｜html 总结｜html slide`，
 值只有 `✅ / ❌`。序号按发布时间升序，新投稿追加在末尾，已有编号不前移。
+没有发布时间的目录（`videos.json` 里查不到）同样排在末尾，绝不挤到前面去——
+序号是用户分配区间时的唯一凭据，一移位就等于全部对错集。
 
 ### 并发模型（重要）
 
@@ -280,7 +282,8 @@ python3 scripts/claim.py break BV1xxx --confirm   # 手动抢占（对方卡死�
 
 - 一批 **5 集**，每集走：`claim` → 抓底本 → 写 md → 生成两个 html → 抽查 3 页 → 上传 → `release`；整批结束再 `sync_progress`。
 - 每批结束给用户：本批清单 + 链接 + 剩余数量，别一次性铺开 20 集（质量会掉）。
-- 遇到长视频（>30 分钟）或内容跨越多主题，拆成两篇 note.md，第二篇命名 `<bvid>-2`。
+- 遇到长视频（>30 分钟）或内容跨越多主题，拆成两篇笔记：第二篇放**同一个目录**，命名 `note-2.md` / `note-2.html` / `deck-2.html`。
+  - **不要**另建 `BV1xxx-2` 目录。进度表会把任何不在 `videos.json` 里的 `BV*` 目录当成新视频，而它没有发布时间，于是被排到第 1 位，**全表序号整体 +1**，与用户手上的区间分配全部错位（当前版本已把 `BV1xxx-N` 视为同集并入，但仍不建议这样建）。
 
 ## 常见故障
 
@@ -294,6 +297,8 @@ python3 scripts/claim.py break BV1xxx --confirm   # 手动抢占（对方卡死�
 | 上传后文档样式丢失 | 文档只吃 Markdown，表格用 GFM，别塞 HTML 标签 |
 | `正被 sess-x 占用` | 别人在做这一集。换一集，或等 `ttl` 到期；对方确认卡死再 `break --confirm` |
 | 进度表写进去反而是旧数据 | 用 `sync_progress.py`（有防倒退检查），别直接 `create_doc --confirm-overwrite` |
+| 进度表序号整体 +1、和用户说的集数对不上 | 有 `BV*` 目录不在 `videos.json` 里（典型是拆篇建的 `BV1xxx-2`），被当成新视频排到最前。新版 `progress.py` 已把 `BV1xxx-N` 并入同集、其余未知目录排到末尾；若用的是老版本，把文件并回主目录、重跑即可 |
+| `sync_progress` 报「本地落后于线上」但明明刚做完 | 线上表格被重复行污染时总数会虚高。新版按**逐集比对**判倒退（只有线上某集 ✅、本地 ❌ 才拦），这种情况会打印「总数不一致但无倒退」后继续；老版本加 `--force` |
 | 租约文件残留 | `.claims/*.claim` 超过 `ttl` 会自动失效，不影响接手；也可 `release` 清掉 |
 | `cookies get` 返回 0 条、每个会话都要重登 | 浏览器被重启了。八成是手动带了 `HTTP(S)_PROXY` 去调 agent-browser；用 skill 脚本（已自动剥代理），再 `login.py load` |
 | 日志出现 `relaunched browser` | 同上：代理配置变了。别混用不同代理的进程操作同一个 session |

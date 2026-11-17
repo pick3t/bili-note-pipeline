@@ -8,10 +8,17 @@
 目录约定（每个视频一个文件夹，以 BV 号命名）：
   <项目目录>/BV1xxxxxxxxx/{source.md, note.md, note.html, deck.html}
 进度表按 videos.json 的时间顺序（最早→最新）列出全部视频。
+
+拆篇（长视频写两篇笔记）请把第二篇放在**同一个目录**里，命名 note-2.md /
+note-2.html / deck-2.html。**不要**另建 `BV1xxx-2` 目录：那会被当成一集
+新视频、且因为没有发布时间而被排到表格第 1 位，导致全表序号整体 +1。
+即便如此建了，本脚本也会把 `BV1xxx-N` 视为同一集（不单独成行），
+并把它的文件计入主目录那一行。
 """
-import json, pathlib, argparse
+import json, pathlib, re, argparse
 
 MARK = {"y": "✅", "n": "❌"}
+SPLIT_RE = re.compile(r"^(BV[0-9A-Za-z]+)-(\d+)$")   # 拆篇目录 BV1xxx-2
 
 
 def main():
@@ -34,22 +41,47 @@ def main():
     bvs = {v["bvid"]: v for v in videos}
 
     # 目录里出现过但 json 里没有的，也补上
+    # 两种特例：
+    #   BV1xxx-2（拆篇目录）→ 并入主目录那一行，不单独成行
+    #   其余未知目录         → 排到表格末尾，绝不打乱已有序号
+    split_dirs, unknown = {}, []
     for d in sorted(root.iterdir()):
-        if d.is_dir() and d.name.startswith("BV") and d.name not in bvs:
-            t = ""
-            f = d / "source.md"
-            if f.exists():
-                first = f.read_text(encoding="utf-8").splitlines()
-                t = first[0].lstrip("# ").strip() if first else ""
-            videos.append({"bvid": d.name, "title": t, "date": "", "duration": ""})
-            bvs[d.name] = videos[-1]
+        if not (d.is_dir() and d.name.startswith("BV")):
+            continue
+        name = d.name
+        if name in bvs:
+            continue
+        m = SPLIT_RE.match(name)
+        if m:
+            split_dirs.setdefault(m.group(1), []).append(name)
+            continue
+        unknown.append(d)
 
-    videos.sort(key=lambda v: (v.get("created") or 0, v.get("date") or ""))
+    for d in unknown:
+        t = ""
+        f = d / "source.md"
+        if f.exists():
+            first = f.read_text(encoding="utf-8").splitlines()
+            t = first[0].lstrip("# ").strip() if first else ""
+        videos.append({"bvid": d.name, "title": t, "date": "", "duration": "",
+                       "_local": True})
+        bvs[d.name] = videos[-1]
+    if unknown:
+        print(f"提示：{len(unknown)} 个目录不在 videos.json 里，已排在表格末尾："
+              + "、".join(d.name for d in unknown))
+    if split_dirs:
+        print("提示：拆篇目录已并入主集统计："
+              + "、".join(f"{k}({'+'.join(v)})" for k, v in split_dirs.items()))
+
+    # 未收录目录没有发布时间，排在最后；json 里的照旧按发布时间
+    videos.sort(key=lambda v: (v.get("created") or (float("inf") if v.get("_local") else 0),
+                               v.get("date") or ""))
 
     rows, done = [], {"md": 0, "html": 0, "deck": 0, "src": 0}
     for idx, v in enumerate(videos, 1):
         bv, d = v["bvid"], root / v["bvid"]
-        has = {k: (d / f).exists() for k, f in
+        cands = [d] + [root / x for x in split_dirs.get(bv, [])]
+        has = {k: any((c / f).exists() for c in cands) for k, f in
                (("src", "source.md"), ("md", "note.md"),
                 ("html", "note.html"), ("deck", "deck.html"))}
         for k in done:
