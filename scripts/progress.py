@@ -18,6 +18,7 @@ note-2.html / deck-2.html。**不要**另建 `BV1xxx-2` 目录：那会被当成
 import json, pathlib, re, argparse
 
 MARK = {"y": "✅", "n": "❌"}
+SPACE_DOC = "https://www.workbuddy.cn/space/d/"
 SPLIT_RE = re.compile(r"^(BV[0-9A-Za-z]+)-(\d+)$")   # 拆篇目录 BV1xxx-2
 
 
@@ -39,6 +40,16 @@ def main():
     if vj.exists():
         videos = json.loads(vj.read_text(encoding="utf-8"))
     bvs = {v["bvid"]: v for v in videos}
+
+    # 可选的 folders.json（{bvid: {id, seq, title}}）：有它就把「视频名称」列做成
+    # 指向资料库该集文件夹的超链接，表格从「对账用」变成「浏览用」。
+    folders = {}
+    fj = root / "folders.json"
+    if fj.exists():
+        try:
+            folders = json.loads(fj.read_text(encoding="utf-8"))
+        except Exception:
+            print(f"提示：{fj.name} 解析失败，标题列按纯文本生成")
 
     # 目录里出现过但 json 里没有的，也补上
     # 两种特例：
@@ -86,8 +97,11 @@ def main():
                 ("html", "note.html"), ("deck", "deck.html"))}
         for k in done:
             done[k] += 1 if has[k] else 0
+        f = folders.get(bv) or {}
+        name = v["title"]
+        name_cell = f"[{name}]({SPACE_DOC}{f['id']})" if f.get("id") else name
         rows.append(
-            f"| {idx} | [{bv}](https://www.bilibili.com/video/{bv}) | {v['title']} | "
+            f"| {idx} | [{bv}](https://www.bilibili.com/video/{bv}) | {name_cell} | "
             f"{MARK['y' if has['md'] else 'n']} | {MARK['y' if has['html'] else 'n']} | "
             f"{MARK['y' if has['deck'] else 'n']} |")
 
